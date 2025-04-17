@@ -1,11 +1,8 @@
-name: Laravel Deployment via SSH/SCP (Fixed)
+name: Laravel Deployment (Fixed Connectivity)
 
 on:
   push:
     branches: [ main ]
-
-env:
-  SSH_OPTS: -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o KexAlgorithms=diffie-hellman-group-exchange-sha256 -o HostKeyAlgorithms=ssh-rsa -o Ciphers=aes128-ctr
 
 jobs:
   deploy:
@@ -15,33 +12,56 @@ jobs:
       - name: 🛠️ Checkout code
         uses: actions/checkout@v3
 
-      - name: 🔑 Configure SSH
+      - name: 🔍 Verify Server Accessibility
+        id: connectivity-check
+        run: |
+          echo "Testing connection to server..."
+          
+          # Try multiple connection methods
+          if ping -c 3 ${{ secrets.SSH_SERVER }} &> /dev/null || \
+             nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22 &> /dev/null || \
+             curl --connect-timeout 5 telnet://${{ secrets.SSH_SERVER }}:22 &> /dev/null; then
+            echo "server-accessible=true" >> $GITHUB_OUTPUT
+          else
+            echo "server-accessible=false" >> $GITHUB_OUTPUT
+            echo "::warning::Basic connectivity tests failed. Trying advanced methods..."
+          fi
+
+      - name: 🔑 Configure SSH (Alternative Method)
+        if: steps.connectivity-check.outputs.server-accessible == 'true'
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30\n\tKexAlgorithms diffie-hellman-group-exchange-sha256" > ~/.ssh/config
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
+          echo "Added SSH configuration"
 
-      - name: 🌐 Test connection
-        run: |
-          echo "Testing connection to ${{ secrets.SSH_SERVER }}..."
-          if ! timeout 10 bash -c "</dev/tcp/${{ secrets.SSH_SERVER }}/${{ secrets.SSH_PORT || 22 }}"; then
-            echo "::error::Cannot connect to server"
-            exit 1
-          fi
-          echo "Connection successful!"
-
-      - name: 📤 Upload files via SCP (with retry)
-        uses: nick-fields/retry@v2
+      - name: 📤 Attempt Secure Copy (Primary Method)
+        if: steps.connectivity-check.outputs.server-accessible == 'true'
+        uses: appleboy/scp-action@v0.1.7
         with:
-          max_attempts: 3
-          timeout_minutes: 10
-          command: |
-            scp -r -P ${{ secrets.SSH_PORT || 22 }} $SSH_OPTS \
-            ./* \
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "./*"
+          target: ${{ secrets.SERVER_DIR }}
+          overwrite: true
+          timeout: 5m
+
+      - name: 🚨 Fallback Deployment Method
+        if: steps.connectivity-check.outputs.server-accessible == 'false'
+        run: |
+          echo "::warning::Using fallback deployment method via rsync over SSH"
+          
+          # Install rsync if not available
+          sudo apt-get update && sudo apt-get install -y rsync
+          
+          rsync -avz -e "ssh -p ${{ secrets.SSH_PORT || '22' }} -o StrictHostKeyChecking=no -o ConnectTimeout=30" \
+            ./ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:${{ secrets.SERVER_DIR }}
 
-      - name: ⚙️ Run server commands
+      - name: ⚙️ Run Server Commands
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_SERVER }}
@@ -53,7 +73,7 @@ jobs:
             echo "📂 Changing to project directory..."
             cd ${{ secrets.SERVER_DIR }}
             
-            echo "🔧 Setting up .env..."
+            echo "🔧 Setting up environment..."
             [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
             
             echo "📦 Installing dependencies..."
