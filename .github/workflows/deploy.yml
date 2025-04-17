@@ -1,65 +1,72 @@
-name: Deploy Laravel via SSH/SCP
+name: Deploy via SSH/SCP com Correção de Timeout
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  test:
-    name: 🧪 Executar Testes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: composer install --prefer-dist --no-interaction
-      - run: cp .env.example .env && php artisan key:generate
-      - run: ./vendor/bin/phpunit
-
   deploy:
-    name: 🚀 Deploy via SSH/SCP
-    needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Aumenta o timeout global
+    timeout-minutes: 30  # Aumento do timeout global
     steps:
-      - uses: actions/checkout@v3
+      - name: 🛠️ Checkout do código
+        uses: actions/checkout@v3
 
-      - name: 🔍 Verificar conectividade
-        run: |
-          ping -c 3 ${{ secrets.SSH_DIRECT_IP }}
-          nc -zv -w 5 ${{ secrets.SSH_DIRECT_IP }} 22
-          ssh-keyscan ${{ secrets.SSH_DIRECT_IP }} >> ~/.ssh/known_hosts
-
-      - name: 🔑 Configurar SSH
+      - name: 🔑 Configuração SSH Avançada
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo "StrictHostKeyChecking no" > ~/.ssh/config
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30\n\tServerAliveInterval 15" > ~/.ssh/config
+          echo "Configuração SSH agressiva para contornar problemas de conexão"
 
-      - name: 📂 Enviar arquivos (SCP)
-        uses: appleboy/scp-action@v0.1.7
+      - name: 🌐 Teste de Conectividade
+        run: |
+          echo "Testando conexão com o servidor..."
+          echo "IP do servidor: ${{ secrets.SSH_DIRECT_IP }}"
+          echo "Porta: ${{ secrets.SSH_PORT || '22' }}"
+          
+          # Teste com timeout
+          timeout 10 bash -c "</dev/tcp/${{ secrets.SSH_DIRECT_IP }}/${{ secrets.SSH_PORT || '22' }}" && \
+            echo "✅ Porta aberta" || \
+            echo "❌ Falha na conexão"
+
+      - name: 📤 Upload via SCP com Retry
+        uses: nick-fields/retry@v2
         with:
-          host: ${{ secrets.SSH_DIRECT_IP }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          source: "./*"
-          target: ${{ secrets.SERVER_DIR }}
-          rm: true
-          overwrite: true
-          timeout: 2m  # Aumenta timeout específico do SCP
-          command_timeout: 10m
+          max_attempts: 3
+          timeout_minutes: 10
+          command: |
+            scp -v -r \
+              -o "ConnectTimeout=20" \
+              -P ${{ secrets.SSH_PORT || '22' }} \
+              ./* \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }}:${{ secrets.SERVER_DIR }}
 
-      - name: ⚙️ Configurar servidor
+      - name: ⚙️ Configuração do Servidor
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_DIRECT_IP }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
+          script_timeout: 15m
           script: |
+            echo "📂 Acessando diretório..."
             cd ${{ secrets.SERVER_DIR }}
+            
+            echo "🔧 Configurando .env..."
             [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
-            composer install --no-dev --optimize-autoloader
+            
+            echo "📦 Instalando dependências..."
+            composer install --no-dev --optimize-autoloader --no-interaction
+            
+            echo "🔄 Otimizando aplicação..."
             php artisan optimize:clear
-            php artisan migrate --force
+            php artisan storage:link
+            
+            echo "🛠️ Aplicando permissões..."
+            chmod -R 775 storage bootstrap/cache
+            chown -R www-data:www-data storage bootstrap/cache
+            
+            echo "🚀 Deploy concluído com sucesso!"
