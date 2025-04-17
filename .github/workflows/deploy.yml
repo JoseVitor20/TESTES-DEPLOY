@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: 🚀 FTP Deploy Laravel
 
 on:
@@ -21,22 +20,5 @@ jobs:
           server: ${{ secrets.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./  # ou o caminho da pasta que você quer enviar
-          remote-dir: ${{secrets.HOSTGATOR_DEPLOY_DIR}}  # o diretório de destino no servidor
-
-            ./ ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/var/www/laravel-app
-
-      - name: 🚀 Run post-deploy commands
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-            cd /var/www/laravel-app
-
-            # Se necessário: configura permissões
-            # sudo chown -R www-data:www-data .
-
-            composer install --no-dev --optimize-autoloader
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-          EOF
+          local-dir: ./ # Caminho do seu projeto Laravel no repositório
+          remote-dir: ./ # Caminho de destino no servidor FTP
