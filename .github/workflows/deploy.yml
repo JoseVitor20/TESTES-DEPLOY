@@ -1,0 +1,47 @@
+# .github/workflows/deploy.yml
+name: 🚀 FTP Deploy Laravel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ftp-deploy:
+    name: 📤 Deploy via FTP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v3
+
+      - name: 📤 Deploy to FTP server
+        uses: SamKirkland/FTP-Deploy-Action@v3.1.1
+        with:
+          ftp-server: ${{ secrets.FTP_SERVER }}
+          ftp-username: ${{ secrets.FTP_USER }}
+          ftp-password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: ${{secrets.HOSTGATOR_DEPLOY_DIR}}
+          exclude: |
+            **/.git*
+            **/.env
+            **/vendor/**
+            **/node_modules/**
+
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/var/www/laravel-app
+
+      - name: 🚀 Run post-deploy commands
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            cd /var/www/laravel-app
+
+            # Se necessário: configura permissões
+            # sudo chown -R www-data:www-data .
+
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+          EOF
