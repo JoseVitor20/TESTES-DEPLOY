@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Aumento do timeout global
+    timeout-minutes: 30  # Aumento do timeout global para 30 minutos
     steps:
       - name: 🛠️ Checkout do código
         uses: actions/checkout@v3
