@@ -1,4 +1,4 @@
-name: Deploy via SSH/SCP com Correção de Timeout
+name: Laravel Deployment via SSH/SCP
 
 on:
   push:
@@ -7,66 +7,71 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Aumento do timeout global para 30 minutos
+    timeout-minutes: 30
     steps:
-      - name: 🛠️ Checkout do código
+      - name: 🛠️ Checkout code
         uses: actions/checkout@v3
 
-      - name: 🔑 Configuração SSH Avançada
+      - name: 🔑 Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30\n\tServerAliveInterval 15" > ~/.ssh/config
-          echo "Configuração SSH agressiva para contornar problemas de conexão"
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
 
-      - name: 🌐 Teste de Conectividade
+      - name: 🌐 Test connection
         run: |
-          echo "Testando conexão com o servidor..."
-          echo "IP do servidor: ${{ secrets.SSH_DIRECT_IP }}"
-          echo "Porta: ${{ secrets.SSH_PORT || '22' }}"
-          
-          # Teste com timeout
-          timeout 10 bash -c "</dev/tcp/${{ secrets.SSH_DIRECT_IP }}/${{ secrets.SSH_PORT || '22' }}" && \
-            echo "✅ Porta aberta" || \
-            echo "❌ Falha na conexão"
+          echo "Testing SSH connection to server..."
+          ssh -o ConnectTimeout=5 \
+              -o KexAlgorithms=diffie-hellman-group-exchange-sha256 \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} \
+              "echo 'Connection successful!'" || true
 
-      - name: 📤 Upload via SCP com Retry
-        uses: nick-fields/retry@v2
+      - name: 📤 Upload files via SCP
+        uses: appleboy/scp-action@v0.1.7
         with:
-          max_attempts: 3
-          timeout_minutes: 10
-          command: |
-            scp -v -r \
-              -o "ConnectTimeout=20" \
-              -P ${{ secrets.SSH_PORT || '22' }} \
-              ./* \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }}:${{ secrets.SERVER_DIR }}
-
-      - name: ⚙️ Configuração do Servidor
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_DIRECT_IP }}
+          host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
-          script_timeout: 15m
+          source: "./*"
+          target: ${{ secrets.SERVER_DIR }}
+          overwrite: true
+          ssh_options: |
+            KexAlgorithms=diffie-hellman-group-exchange-sha256
+            HostKeyAlgorithms=ssh-rsa,ssh-dss
+            Ciphers=aes128-ctr,aes192-ctr,aes256-ctr
+            MACs=hmac-sha2-256,hmac-sha1
+
+      - name: ⚙️ Run server commands
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          command_timeout: 15m
           script: |
-            echo "📂 Acessando diretório..."
+            echo "📂 Changing to project directory..."
             cd ${{ secrets.SERVER_DIR }}
             
-            echo "🔧 Configurando .env..."
+            echo "🔧 Setting up .env..."
             [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
             
-            echo "📦 Instalando dependências..."
+            echo "📦 Installing dependencies..."
             composer install --no-dev --optimize-autoloader --no-interaction
             
-            echo "🔄 Otimizando aplicação..."
+            echo "🔄 Optimizing application..."
             php artisan optimize:clear
             php artisan storage:link
             
-            echo "🛠️ Aplicando permissões..."
+            echo "🛠️ Setting permissions..."
             chmod -R 775 storage bootstrap/cache
             chown -R www-data:www-data storage bootstrap/cache
             
-            echo "🚀 Deploy concluído com sucesso!"
+            echo "🚀 Deployment completed successfully!"
+          ssh_options: |
+            KexAlgorithms=diffie-hellman-group-exchange-sha256
+            HostKeyAlgorithms=ssh-rsa,ssh-dss
+            Ciphers=aes128-ctr,aes192-ctr,aes256-ctr
+            MACs=hmac-sha2-256,hmac-sha1
