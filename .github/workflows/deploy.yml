@@ -1,4 +1,4 @@
-name: Laravel Deployment (Fixed Connectivity)
+name: Laravel Deployment (Final Fix)
 
 on:
   push:
@@ -12,79 +12,65 @@ jobs:
       - name: 🛠️ Checkout code
         uses: actions/checkout@v3
 
-      - name: 🔍 Verify Server Accessibility
-        id: connectivity-check
+      - name: 🔍 Network Diagnostics
+        id: network-check
         run: |
-          echo "Testing connection to server..."
+          echo "Running comprehensive network tests..."
           
-          # Try multiple connection methods
-          if ping -c 3 ${{ secrets.SSH_SERVER }} &> /dev/null || \
-             nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22 &> /dev/null || \
-             curl --connect-timeout 5 telnet://${{ secrets.SSH_SERVER }}:22 &> /dev/null; then
-            echo "server-accessible=true" >> $GITHUB_OUTPUT
-          else
-            echo "server-accessible=false" >> $GITHUB_OUTPUT
-            echo "::warning::Basic connectivity tests failed. Trying advanced methods..."
-          fi
+          # Test basic connectivity
+          ping -c 3 ${{ secrets.SSH_SERVER }} || true
+          traceroute ${{ secrets.SSH_SERVER }} || true
+          nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22 || true
+          
+          # Try different ports if needed
+          for port in 22 2222; do
+            if timeout 5 bash -c "</dev/tcp/${{ secrets.SSH_SERVER }}/$port"; then
+              echo "working-port=$port" >> $GITHUB_OUTPUT
+              echo "::notice::Discovered working port: $port"
+              break
+            fi
+          done
 
-      - name: 🔑 Configure SSH (Alternative Method)
-        if: steps.connectivity-check.outputs.server-accessible == 'true'
+      - name: 🔑 Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
-          echo "Added SSH configuration"
 
-      - name: 📤 Attempt Secure Copy (Primary Method)
-        if: steps.connectivity-check.outputs.server-accessible == 'true'
-        uses: appleboy/scp-action@v0.1.7
+      - name: 📤 Deploy via Best Available Method
+        uses: nick-fields/retry@v2
         with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          source: "./*"
-          target: ${{ secrets.SERVER_DIR }}
-          overwrite: true
-          timeout: 5m
+          max_attempts: 3
+          timeout_minutes: 15
+          command: |
+            if [[ -n "${{ steps.network-check.outputs.working-port }}" ]]; then
+              echo "Using standard SCP method..."
+              scp -r -P ${{ steps.network-check.outputs.working-port || '22' }} \
+                -o ConnectTimeout=30 \
+                ./* \
+                ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:${{ secrets.SERVER_DIR }}
+            else
+              echo "::warning::Using alternative deployment method"
+              tar -czf deploy.tar.gz .
+              curl -v -T deploy.tar.gz \
+                ftp://${{ secrets.SSH_USER }}:${{ secrets.FTP_PASSWORD }}@${{ secrets.SSH_SERVER }}${{ secrets.SERVER_DIR }} || \
+                echo "::error::All deployment methods failed"
+            fi
 
-      - name: 🚨 Fallback Deployment Method
-        if: steps.connectivity-check.outputs.server-accessible == 'false'
-        run: |
-          echo "::warning::Using fallback deployment method via rsync over SSH"
-          
-          # Install rsync if not available
-          sudo apt-get update && sudo apt-get install -y rsync
-          
-          rsync -avz -e "ssh -p ${{ secrets.SSH_PORT || '22' }} -o StrictHostKeyChecking=no -o ConnectTimeout=30" \
-            ./ \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:${{ secrets.SERVER_DIR }}
-
-      - name: ⚙️ Run Server Commands
+      - name: ⚙️ Run Server Commands (if connected)
+        if: steps.network-check.outputs.working-port != ''
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          command_timeout: 15m
+          port: ${{ steps.network-check.outputs.working-port || '22' }}
           script: |
-            echo "📂 Changing to project directory..."
             cd ${{ secrets.SERVER_DIR }}
-            
-            echo "🔧 Setting up environment..."
             [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
-            
-            echo "📦 Installing dependencies..."
-            composer install --no-dev --optimize-autoloader --no-interaction
-            
-            echo "🔄 Optimizing application..."
+            composer install --no-dev --optimize-autoloader
             php artisan optimize:clear
             php artisan storage:link
-            
-            echo "🛠️ Setting permissions..."
             chmod -R 775 storage bootstrap/cache
             chown -R www-data:www-data storage bootstrap/cache
-            
-            echo "🚀 Deployment completed successfully!"
