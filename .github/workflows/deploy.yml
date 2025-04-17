@@ -7,71 +7,59 @@ on:
 
 jobs:
   test:
-    name: Executar Testes no Back-end
+    name: 🧪 Executar Testes
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Obter código
-        uses: actions/checkout@v3
-
-      - name: 📦 Instalar dependências
-        run: composer install --prefer-dist --no-interaction --no-scripts
-
-      - name: 🛠️ Configurar ambiente
-        run: cp .env.example .env && php artisan key:generate
-
-      - name: 🧪 Rodar testes
-        run: ./vendor/bin/phpunit
+      - uses: actions/checkout@v3
+      - run: composer install --prefer-dist --no-interaction
+      - run: cp .env.example .env && php artisan key:generate
+      - run: ./vendor/bin/phpunit
 
   deploy:
     name: 🚀 Deploy via SSH/SCP
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Aumenta o timeout global
     steps:
-      - name: 📥 Obter código
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+
+      - name: 🔍 Verificar conectividade
+        run: |
+          ping -c 3 ${{ secrets.SSH_SERVER }}
+          nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22
+          ssh-keyscan ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
 
       - name: 🔑 Configurar SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo "${{ secrets.SSH_KNOWN_HOSTS || '' }}" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+          echo "StrictHostKeyChecking no" > ~/.ssh/config
 
       - name: 📂 Enviar arquivos (SCP)
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
-          port: ${{ secrets.SSH_PORT || '22' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
           source: "./*"
           target: ${{ secrets.SERVER_DIR }}
           rm: true
           overwrite: true
-          strip_components: 1
+          timeout: 2m  # Aumenta timeout específico do SCP
+          command_timeout: 10m
 
-      - name: ⚙️ Configurar servidor (SSH)
+      - name: ⚙️ Configurar servidor
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
-          port: ${{ secrets.SSH_PORT || '22' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
           script: |
             cd ${{ secrets.SERVER_DIR }}
-            
-            # Verificar .env
-            if [ ! -f ".env" ]; then
-              echo "${{ secrets.ENV_CONTENT }}" > .env
-            fi
-            
-            # Comandos Laravel
-            composer install --no-dev --optimize-autoloader --no-interaction
-            php artisan storage:link
+            [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
+            composer install --no-dev --optimize-autoloader
             php artisan optimize:clear
             php artisan migrate --force
-            
-            # Permissões
-            chmod -R 775 storage bootstrap/cache
-            chown -R www-data:www-data storage bootstrap/cache
