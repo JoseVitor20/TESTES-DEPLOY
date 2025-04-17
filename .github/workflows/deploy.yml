@@ -39,7 +39,7 @@ jobs:
       - name: 📂 Enviar arquivos via FTP
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
-          server: ${{ secrets.FTP_SERVER }}
+          server: ftp.nexocode.com.br
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: ${{ secrets.SERVER_DIR }}
