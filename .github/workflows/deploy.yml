@@ -1,4 +1,4 @@
-name: Deploy Laravel para public_html via SSH/SFTP
+name: Deploy Laravel via SSH/SCP
 
 on:
   push:
@@ -7,81 +7,71 @@ on:
 
 jobs:
   test:
-    name: Executar Testes de back-end
+    name: Executar Testes
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Obter código mais recente
+      - name: 📥 Obter código
         uses: actions/checkout@v3
 
-      - name: 📦 Instalar dependências do Composer
+      - name: 📦 Instalar dependências
         run: composer install --prefer-dist --no-interaction --no-scripts
 
-      - name: 🛠️ Configurar ambiente de teste
+      - name: 🛠️ Configurar ambiente
         run: cp .env.example .env && php artisan key:generate
-
-      - name: 📦 Instalar PHPUnit
-        run: composer require --dev phpunit/phpunit
 
       - name: 🧪 Rodar testes
         run: ./vendor/bin/phpunit
 
   deploy:
-    name: Deploy Laravel via SSH/SFTP
+    name: 🚀 Deploy via SSH/SCP
+    needs: test
     runs-on: ubuntu-latest
-    needs: test # Somente roda se os testes passarem no back-end
     steps:
-      - name: 📥 Obter código mais recente
+      - name: 📥 Obter código
         uses: actions/checkout@v3
 
-      - name: 🧹 Limpar cache do runner
-        run: rm -rf ~/.cache ~/.ssh
-
-      - name: 🔑 Configurar chave SSH
+      - name: 🔑 Configurar SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_KNOWN_HOSTS || '' }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: 📂 Enviar arquivos via SCP/SFTP
+      - name: 📂 Enviar arquivos (SCP)
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT || '22' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
           source: "./*"
           target: ${{ secrets.SERVER_DIR }}
-          rm: true # Remove arquivos no servidor que não existem localmente
+          rm: true
           overwrite: true
           strip_components: 1
 
-      - name: 🚀 Executar comandos no servidor via SSH
+      - name: ⚙️ Configurar servidor (SSH)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT || '22' }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
           script: |
             cd ${{ secrets.SERVER_DIR }}
-            echo "🔑 Verificando .env..."
+            
+            # Verificar .env
             if [ ! -f ".env" ]; then
-              echo "${{ secrets.ENV_FILE }}" > .env
+              echo "${{ secrets.ENV_CONTENT }}" > .env
             fi
-            echo "📦 Instalando dependências..."
-            composer install --no-dev --optimize-autoloader
-            echo "🔄 Configurando ambiente..."
-            mkdir -p storage bootstrap/cache
+            
+            # Comandos Laravel
+            composer install --no-dev --optimize-autoloader --no-interaction
             php artisan storage:link
-            php artisan config:clear
-            php artisan cache:clear
-            php artisan route:clear
-            php artisan view:clear
-            echo "🛠️ Aplicando permissões..."
-            chmod -R 775 storage bootstrap/cache public/
-            chown -R www-data:www-data storage bootstrap/cache public/
-            echo "🗄️ Migrando banco de dados..."
+            php artisan optimize:clear
             php artisan migrate --force
-            echo "✅ Deploy efetuado com sucesso!"
+            
+            # Permissões
+            chmod -R 775 storage bootstrap/cache
+            chown -R www-data:www-data storage bootstrap/cache
