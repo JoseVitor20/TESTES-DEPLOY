@@ -25,9 +25,9 @@ jobs:
 
       - name: 🔍 Verificar conectividade
         run: |
-          ping -c 3 ${{ secrets.SSH_SERVER }}
-          nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22
-          ssh-keyscan ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
+          ping -c 3 ${{ secrets.SSH_DIRECT_IP }}
+          nc -zv -w 5 ${{ secrets.SSH_DIRECT_IP }} 22
+          ssh-keyscan ${{ secrets.SSH_DIRECT_IP }} >> ~/.ssh/known_hosts
 
       - name: 🔑 Configurar SSH
         run: |
@@ -39,7 +39,7 @@ jobs:
       - name: 📂 Enviar arquivos (SCP)
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SSH_SERVER }}
+          host: ${{ secrets.SSH_DIRECT_IP }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
@@ -53,7 +53,7 @@ jobs:
       - name: ⚙️ Configurar servidor
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.SSH_SERVER }}
+          host: ${{ secrets.SSH_DIRECT_IP }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
