@@ -12,22 +12,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repositório
+      - name: 📥 Checkout repo
         uses: actions/checkout@v3
 
       - name: 📤 Deploy to FTP server
-        uses: SamKirkland/FTP-Deploy-Action@v3.1.1
+        uses: dante-ev/ftp-action@v1.0.0
         with:
-          ftp-server: ${{ secrets.FTP_SERVER }}
-          ftp-username: ${{ secrets.FTP_USER }}
-          ftp-password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./
-          server-dir: ${{secrets.HOSTGATOR_DEPLOY_DIR}}
-          exclude: |
-            **/.git*
-            **/.env
-            **/vendor/**
-            **/node_modules/**
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./  # ou o caminho da pasta que você quer enviar
+          remote-dir: ${{secrets.HOSTGATOR_DEPLOY_DIR}}  # o diretório de destino no servidor
 
             ./ ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/var/www/laravel-app
 
