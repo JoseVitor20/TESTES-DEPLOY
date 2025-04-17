@@ -1,8 +1,11 @@
-name: Laravel Deployment via SSH/SCP
+name: Laravel Deployment via SSH/SCP (Fixed)
 
 on:
   push:
     branches: [ main ]
+
+env:
+  SSH_OPTS: -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o KexAlgorithms=diffie-hellman-group-exchange-sha256 -o HostKeyAlgorithms=ssh-rsa -o Ciphers=aes128-ctr
 
 jobs:
   deploy:
@@ -17,31 +20,26 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30\n\tKexAlgorithms diffie-hellman-group-exchange-sha256" > ~/.ssh/config
 
       - name: 🌐 Test connection
         run: |
-          echo "Testing SSH connection to server..."
-          ssh -o ConnectTimeout=5 \
-              -o KexAlgorithms=diffie-hellman-group-exchange-sha256 \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} \
-              "echo 'Connection successful!'" || true
+          echo "Testing connection to ${{ secrets.SSH_SERVER }}..."
+          if ! timeout 10 bash -c "</dev/tcp/${{ secrets.SSH_SERVER }}/${{ secrets.SSH_PORT || 22 }}"; then
+            echo "::error::Cannot connect to server"
+            exit 1
+          fi
+          echo "Connection successful!"
 
-      - name: 📤 Upload files via SCP
-        uses: appleboy/scp-action@v0.1.7
+      - name: 📤 Upload files via SCP (with retry)
+        uses: nick-fields/retry@v2
         with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          source: "./*"
-          target: ${{ secrets.SERVER_DIR }}
-          overwrite: true
-          ssh_options: |
-            KexAlgorithms=diffie-hellman-group-exchange-sha256
-            HostKeyAlgorithms=ssh-rsa,ssh-dss
-            Ciphers=aes128-ctr,aes192-ctr,aes256-ctr
-            MACs=hmac-sha2-256,hmac-sha1
+          max_attempts: 3
+          timeout_minutes: 10
+          command: |
+            scp -r -P ${{ secrets.SSH_PORT || 22 }} $SSH_OPTS \
+            ./* \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:${{ secrets.SERVER_DIR }}
 
       - name: ⚙️ Run server commands
         uses: appleboy/ssh-action@v1.2.0
@@ -70,8 +68,3 @@ jobs:
             chown -R www-data:www-data storage bootstrap/cache
             
             echo "🚀 Deployment completed successfully!"
-          ssh_options: |
-            KexAlgorithms=diffie-hellman-group-exchange-sha256
-            HostKeyAlgorithms=ssh-rsa,ssh-dss
-            Ciphers=aes128-ctr,aes192-ctr,aes256-ctr
-            MACs=hmac-sha2-256,hmac-sha1
