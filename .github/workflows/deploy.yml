@@ -7,18 +7,19 @@ on:
 
 jobs:
   ftp-deploy:
-    name: 📤 Deploy via FTP
     runs-on: ubuntu-latest
+    name: 📤 Deploy to FTP
 
     steps:
-      - name: 📥 Checkout repo
+      - name: 📥 Checkout source
         uses: actions/checkout@v3
 
-      - name: 📤 Deploy to FTP server
-        uses: dante-ev/ftp-action@v1.0.0
+      - name: 📤 Upload via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./ # Caminho do seu projeto Laravel no repositório
-          remote-dir: ./ # Caminho de destino no servidor FTP
+          local-dir: ./
+          server-dir: ${{secrets.HOSTGATOR_DEPLOY_DIR}}
+          dangerous-clean-slate: false
