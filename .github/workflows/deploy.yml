@@ -1,4 +1,4 @@
-name: Laravel Deployment (Final Fix)
+name: Laravel Deployment (Guaranteed Delivery)
 
 on:
   push:
@@ -7,70 +7,68 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: 🛠️ Checkout code
         uses: actions/checkout@v3
 
       - name: 🔍 Network Diagnostics
-        id: network-check
         run: |
-          echo "Running comprehensive network tests..."
-          
-          # Test basic connectivity
+          echo "Running network tests..."
           ping -c 3 ${{ secrets.SSH_SERVER }} || true
           traceroute ${{ secrets.SSH_SERVER }} || true
-          nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22 || true
-          
-          # Try different ports if needed
-          for port in 22 2222; do
-            if timeout 5 bash -c "</dev/tcp/${{ secrets.SSH_SERVER }}/$port"; then
-              echo "working-port=$port" >> $GITHUB_OUTPUT
-              echo "::notice::Discovered working port: $port"
-              break
-            fi
-          done
+          nc -zv -w 5 ${{ secrets.SSH_SERVER }} ${{ secrets.SSH_PORT || '22' }} || true
 
-      - name: 🔑 Configure SSH
+      - name: 📦 Create Deployment Package
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
+          # Exclude files that shouldn't be deployed
+          tar --exclude='.git' \
+              --exclude='.github' \
+              --exclude='.env' \
+              -czf deploy.tar.gz .
+          echo "PACKAGE=deploy.tar.gz" >> $GITHUB_ENV
 
-      - name: 📤 Deploy via Best Available Method
+      - name: ⬆️ Attempt Secure Upload (Primary)
         uses: nick-fields/retry@v2
         with:
           max_attempts: 3
           timeout_minutes: 15
           command: |
-            if [[ -n "${{ steps.network-check.outputs.working-port }}" ]]; then
-              echo "Using standard SCP method..."
-              scp -r -P ${{ steps.network-check.outputs.working-port || '22' }} \
-                -o ConnectTimeout=30 \
-                ./* \
-                ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:${{ secrets.SERVER_DIR }}
+            if [[ -n "${{ secrets.SSH_SERVER }}" ]]; then
+              echo "Trying SCP..."
+              scp -P ${{ secrets.SSH_PORT || '22' }} \
+                  -o ConnectTimeout=30 \
+                  -o StrictHostKeyChecking=no \
+                  deploy.tar.gz \
+                  ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/deploy.tar.gz
+              
+              ssh -p ${{ secrets.SSH_PORT || '22' }} \
+                  -o ConnectTimeout=30 \
+                  ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} \
+                  "tar -xzf /tmp/deploy.tar.gz -C ${{ secrets.SERVER_DIR }} && rm /tmp/deploy.tar.gz"
             else
-              echo "::warning::Using alternative deployment method"
-              tar -czf deploy.tar.gz .
-              curl -v -T deploy.tar.gz \
-                ftp://${{ secrets.SSH_USER }}:${{ secrets.FTP_PASSWORD }}@${{ secrets.SSH_SERVER }}${{ secrets.SERVER_DIR }} || \
-                echo "::error::All deployment methods failed"
+              exit 1
             fi
 
-      - name: ⚙️ Run Server Commands (if connected)
-        if: steps.network-check.outputs.working-port != ''
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ steps.network-check.outputs.working-port || '22' }}
-          script: |
-            cd ${{ secrets.SERVER_DIR }}
-            [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
-            composer install --no-dev --optimize-autoloader
-            php artisan optimize:clear
-            php artisan storage:link
-            chmod -R 775 storage bootstrap/cache
-            chown -R www-data:www-data storage bootstrap/cache
+      - name: 🆘 Fallback to FTP (Secondary)
+        if: failure()
+        run: |
+          echo "::warning::Using FTP fallback method"
+          curl -v --ftp-create-dirs -T deploy.tar.gz \
+              ftp://${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}@${{ secrets.FTP_SERVER }}/${{ secrets.SERVER_DIR }}/deploy.tar.gz
+          
+          curl -v ftp://${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}@${{ secrets.FTP_SERVER }}/${{ secrets.SERVER_DIR }}/deploy.sh \
+              -Q "SITE CHMOD 755 deploy.sh" \
+              -Q "SITE EXEC ./deploy.sh"
+
+      - name: 📝 Generate Manual Deployment Instructions
+        if: failure()
+        run: |
+          echo "::error::All automated methods failed. Manual steps:"
+          echo "1. Download the artifact from this workflow run"
+          echo "2. Extract to your server at: ${{ secrets.SERVER_DIR }}"
+          echo "3. Run these commands:"
+          echo "   cd ${{ secrets.SERVER_DIR }}"
+          echo "   composer install --no-dev --optimize-autoloader"
+          echo "   php artisan optimize:clear"
+          echo "   php artisan storage:link"
