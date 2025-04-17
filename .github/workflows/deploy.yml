@@ -1,4 +1,4 @@
-name: Laravel Deployment (Guaranteed Delivery)
+name: Laravel Deployment (Fixed Connectivity)
 
 on:
   push:
@@ -7,68 +7,84 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: 🛠️ Checkout code
         uses: actions/checkout@v3
 
-      - name: 🔍 Network Diagnostics
+      - name: 🔍 Verify Server Accessibility
+        id: connectivity-check
         run: |
-          echo "Running network tests..."
-          ping -c 3 ${{ secrets.SSH_SERVER }} || true
-          traceroute ${{ secrets.SSH_SERVER }} || true
-          nc -zv -w 5 ${{ secrets.SSH_SERVER }} ${{ secrets.SSH_PORT || '22' }} || true
-
-      - name: 📦 Create Deployment Package
-        run: |
-          # Exclude files that shouldn't be deployed
-          tar --exclude='.git' \
-              --exclude='.github' \
-              --exclude='.env' \
-              -czf deploy.tar.gz .
-          echo "PACKAGE=deploy.tar.gz" >> $GITHUB_ENV
-
-      - name: ⬆️ Attempt Secure Upload (Primary)
-        uses: nick-fields/retry@v2
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          command: |
-            if [[ -n "${{ secrets.SSH_SERVER }}" ]]; then
-              echo "Trying SCP..."
-              scp -P ${{ secrets.SSH_PORT || '22' }} \
-                  -o ConnectTimeout=30 \
-                  -o StrictHostKeyChecking=no \
-                  deploy.tar.gz \
-                  ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/deploy.tar.gz
-              
-              ssh -p ${{ secrets.SSH_PORT || '22' }} \
-                  -o ConnectTimeout=30 \
-                  ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} \
-                  "tar -xzf /tmp/deploy.tar.gz -C ${{ secrets.SERVER_DIR }} && rm /tmp/deploy.tar.gz"
-            else
-              exit 1
-            fi
-
-      - name: 🆘 Fallback to FTP (Secondary)
-        if: failure()
-        run: |
-          echo "::warning::Using FTP fallback method"
-          curl -v --ftp-create-dirs -T deploy.tar.gz \
-              ftp://${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}@${{ secrets.FTP_SERVER }}/${{ secrets.SERVER_DIR }}/deploy.tar.gz
+          echo "Testing connection to server..."
           
-          curl -v ftp://${{ secrets.FTP_USER }}:${{ secrets.FTP_PASSWORD }}@${{ secrets.FTP_SERVER }}/${{ secrets.SERVER_DIR }}/deploy.sh \
-              -Q "SITE CHMOD 755 deploy.sh" \
-              -Q "SITE EXEC ./deploy.sh"
+          # Try multiple connection methods
+          if ping -c 3 ${{ secrets.SSH_SERVER }} &> /dev/null || \
+             nc -zv -w 5 ${{ secrets.SSH_SERVER }} 22 &> /dev/null || \
+             curl --connect-timeout 5 telnet://${{ secrets.SSH_SERVER }}:22 &> /dev/null; then
+            echo "server-accessible=true" >> $GITHUB_OUTPUT
+          else
+            echo "server-accessible=false" >> $GITHUB_OUTPUT
+            echo "::warning::Basic connectivity tests failed. Trying advanced methods..."
+          fi
 
-      - name: 📝 Generate Manual Deployment Instructions
-        if: failure()
+      - name: 🔑 Configure SSH (Alternative Method)
+        if: steps.connectivity-check.outputs.server-accessible == 'true'
         run: |
-          echo "::error::All automated methods failed. Manual steps:"
-          echo "1. Download the artifact from this workflow run"
-          echo "2. Extract to your server at: ${{ secrets.SERVER_DIR }}"
-          echo "3. Run these commands:"
-          echo "   cd ${{ secrets.SERVER_DIR }}"
-          echo "   composer install --no-dev --optimize-autoloader"
-          echo "   php artisan optimize:clear"
-          echo "   php artisan storage:link"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
+          echo "Added SSH configuration"
+
+      - name: 📤 Attempt Secure Copy (Primary Method)
+        if: steps.connectivity-check.outputs.server-accessible == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "./*"
+          target: ${{ secrets.SERVER_DIR }}
+          overwrite: true
+          timeout: 5m
+
+      - name: 🚨 Fallback Deployment Method
+        if: steps.connectivity-check.outputs.server-accessible == 'false'
+        run: |
+          echo "::warning::Using fallback deployment method via rsync over SSH"
+          
+          # Install rsync if not available
+          sudo apt-get update && sudo apt-get install -y rsync
+          
+          rsync -avz -e "ssh -p ${{ secrets.SSH_PORT || '22' }} -o StrictHostKeyChecking=no -o ConnectTimeout=30" \
+            ./ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:${{ secrets.SERVER_DIR }}
+
+      - name: ⚙️ Run Server Commands
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          command_timeout: 15m
+          script: |
+            echo "📂 Changing to project directory..."
+            cd ${{ secrets.SERVER_DIR }}
+            
+            echo "🔧 Setting up environment..."
+            [ ! -f ".env" ] && echo "${{ secrets.ENV_CONTENT }}" > .env
+            
+            echo "📦 Installing dependencies..."
+            composer install --no-dev --optimize-autoloader --no-interaction
+            
+            echo "🔄 Optimizing application..."
+            php artisan optimize:clear
+            php artisan storage:link
+            
+            echo "🛠️ Setting permissions..."
+            chmod -R 775 storage bootstrap/cache
+            chown -R www-data:www-data storage bootstrap/cache
+            
+            echo "🚀 Deployment completed successfully!"
