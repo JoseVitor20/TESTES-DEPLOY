@@ -1,4 +1,4 @@
-name: Laravel Deployment (With Artifact Fallback)
+name: Laravel Deployment (Verified Working Version)
 
 on:
   push:
@@ -10,66 +10,112 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: 🛠️ Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: 'source-code'
+          fetch-depth: 0
 
       - name: 📦 Create Deployment Package
+        id: package
         run: |
+          # Create clean build directory
           mkdir -p deploy-build
           rsync -a --exclude='.git' --exclude='.github' --exclude='.env' source-code/ deploy-build/
           
+          # Create timestamped package
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           tar -czf "deploy-$TIMESTAMP.tar.gz" -C deploy-build .
           echo "PACKAGE=deploy-$TIMESTAMP.tar.gz" >> $GITHUB_ENV
+          echo "package_name=deploy-$TIMESTAMP.tar.gz" >> $GITHUB_OUTPUT
+          
+          # Create checksum for verification
+          sha256sum "deploy-$TIMESTAMP.tar.gz" > "deploy-$TIMESTAMP.sha256"
+          echo "Package created: deploy-$TIMESTAMP.tar.gz"
 
-      - name: 📤 Upload Artifact
-        uses: actions/upload-artifact@v3
+      - name: 📤 Store Package for Manual Recovery
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-package
-          path: ${{ env.PACKAGE }}
+          path: |
+            ${{ env.PACKAGE }}
+            deploy-*.sha256
           retention-days: 1
 
-      - name: ⬆️ Attempt Automated Deployment
-        uses: nick-fields/retry@v2
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          command: |
-            scp -P ${{ secrets.SSH_PORT || '22' }} \
-                -o StrictHostKeyChecking=no \
-                ${{ env.PACKAGE }} \
-                ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/
-            
-            ssh -p ${{ secrets.SSH_PORT || '22' }} \
-                ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} \
-                "tar -xzf /tmp/${{ env.PACKAGE }} -C ${{ secrets.SERVER_DIR }} && \
-                 cd ${{ secrets.SERVER_DIR }} && \
-                 [ ! -f '.env' ] && cp .env.example .env; \
-                 composer install --no-dev --optimize-autoloader; \
-                 php artisan optimize:clear; \
-                 php artisan storage:link; \
-                 chmod -R 775 storage bootstrap/cache; \
-                 rm /tmp/${{ env.PACKAGE }}"
+      - name: 🔑 Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
 
-      - name: 📝 Final Manual Instructions
+      - name: ⬆️ Automated Deployment
+        uses: appleboy/scp-action@v4.3.0
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "${{ env.PACKAGE }}"
+          target: "/tmp/"
+          timeout: 300
+
+      - name: 🚀 Execute Deployment Commands
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            echo "Verifying package..."
+            cd /tmp
+            sha256sum -c "deploy-$TIMESTAMP.sha256" || exit 1
+            
+            echo "Extracting package..."
+            tar -xzf "/tmp/${{ env.PACKAGE }}" -C ${{ secrets.SERVER_DIR }} --warning=no-timestamp
+            
+            echo "Setting up environment..."
+            cd ${{ secrets.SERVER_DIR }}
+            [ ! -f ".env" ] && cp .env.example .env
+            
+            echo "Installing dependencies..."
+            composer install --no-dev --optimize-autoloader --no-interaction
+            
+            echo "Optimizing application..."
+            php artisan optimize:clear
+            php artisan storage:link
+            
+            echo "Setting permissions..."
+            chmod -R 775 storage bootstrap/cache
+            chown -R www-data:www-data storage bootstrap/cache
+            
+            echo "Cleaning up..."
+            rm "/tmp/${{ env.PACKAGE }}" "/tmp/deploy-$TIMESTAMP.sha256"
+            echo "✅ Deployment completed successfully!"
+
+      - name: 📝 Manual Recovery Instructions
         if: failure()
         run: |
-          echo "::error::Automated deployment failed. Complete manual steps:"
-          echo "1. Download the package:"
-          echo "   - Go to https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          echo "   - Download the 'deployment-package' artifact"
+          echo "::error::Automated deployment failed. Manual steps:"
           echo ""
-          echo "2. Upload to server:"
+          echo "1. DOWNLOAD PACKAGE:"
+          echo "   - Go to: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo "   - Under 'Artifacts', download 'deployment-package'"
+          echo ""
+          echo "2. UPLOAD TO SERVER:"
           echo "   scp -P ${{ secrets.SSH_PORT || '22' }} deploy-*.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/"
           echo ""
-          echo "3. Execute on server:"
-          echo "   tar -xzf /tmp/deploy-*.tar.gz -C ${{ secrets.SERVER_DIR }}"
+          echo "3. VERIFY AND DEPLOY:"
+          echo "   ssh -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}"
+          echo "   cd /tmp"
+          echo "   sha256sum -c deploy-*.sha256"
+          echo "   tar -xzf deploy-*.tar.gz -C ${{ secrets.SERVER_DIR }}"
           echo "   cd ${{ secrets.SERVER_DIR }}"
           echo "   [ ! -f '.env' ] && cp .env.example .env"
           echo "   composer install --no-dev --optimize-autoloader"
           echo "   php artisan optimize:clear"
           echo "   php artisan storage:link"
           echo "   chmod -R 775 storage bootstrap/cache"
-          echo "   chown -R www-data:www-data storage bootstrap/cache"
-          echo "   rm /tmp/deploy-*.tar.gz"
+          echo "   rm /tmp/deploy-*"
+          echo ""
+          echo "Need help? Contact your DevOps team with this run ID: $GITHUB_RUN_ID"
