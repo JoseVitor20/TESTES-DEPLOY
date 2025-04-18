@@ -1,121 +1,76 @@
-name: Laravel Deployment (Verified Working Version)
+name: Deploy Laravel para public_html via FTP
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - Projeto-SPA-fashion
 
 jobs:
-  deploy:
+  test:
+    name: Executar Testes de back-end
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
-      - name: 🛠️ Checkout code
-        uses: actions/checkout@v4
+      - name: 📥 Obter código mais recente
+        uses: actions/checkout@v3
+
+      - name: 📦 Instalar dependências do Composer
+        run: composer install --prefer-dist --no-interaction --no-scripts
+
+      - name: 🛠️ Configurar ambiente de teste
+        run: cp .env.example .env && php artisan key:generate
+
+      - name: 📦 Instalar PHPUnit
+        run: composer require --dev phpunit/phpunit
+
+      - name: 🧪 Rodar testes
+        run: ./vendor/bin/phpunit
+
+  deploy:
+    name: Deploy Laravel via FTP
+    runs-on: ubuntu-latest
+    needs: test # Somente roda se os testes passarem
+    steps:
+      - name: 📥 Obter código mais recente
+        uses: actions/checkout@v3
+
+      - name: 🧹 Limpar cache do runner
+        run: rm -rf ~/.cache ~/.ssh
+
+      - name: 📂 Enviar arquivos via FTP
+        uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
-          path: 'source-code'
-          fetch-depth: 0
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.SERVER_DIR }}
+          local-dir: ./
+          exclude: ""
 
-      - name: 📦 Create Deployment Package
-        id: package
-        run: |
-          # Create clean build directory
-          mkdir -p deploy-build
-          rsync -a --exclude='.git' --exclude='.github' --exclude='.env' source-code/ deploy-build/
-          
-          # Create timestamped package
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          tar -czf "deploy-$TIMESTAMP.tar.gz" -C deploy-build .
-          echo "PACKAGE=deploy-$TIMESTAMP.tar.gz" >> $GITHUB_ENV
-          echo "package_name=deploy-$TIMESTAMP.tar.gz" >> $GITHUB_OUTPUT
-          
-          # Create checksum for verification
-          sha256sum "deploy-$TIMESTAMP.tar.gz" > "deploy-$TIMESTAMP.sha256"
-          echo "Package created: deploy-$TIMESTAMP.tar.gz"
-
-      - name: 📤 Store Package for Manual Recovery
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-package
-          path: |
-            ${{ env.PACKAGE }}
-            deploy-*.sha256
-          retention-days: 1
-
-      - name: 🔑 Configure SSH
+      - name: 🚀 Executar comandos no servidor via SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo -e "Host *\n\tStrictHostKeyChecking no\n\tConnectTimeout 30" > ~/.ssh/config
-
-      - name: ⬆️ Automated Deployment
-        uses: appleboy/scp-action@v4.3.0
-        with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          source: "${{ env.PACKAGE }}"
-          target: "/tmp/"
-          timeout: 300
-
-      - name: 🚀 Execute Deployment Commands
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          script: |
-            echo "Verifying package..."
-            cd /tmp
-            sha256sum -c "deploy-$TIMESTAMP.sha256" || exit 1
-            
-            echo "Extracting package..."
-            tar -xzf "/tmp/${{ env.PACKAGE }}" -C ${{ secrets.SERVER_DIR }} --warning=no-timestamp
-            
-            echo "Setting up environment..."
-            cd ${{ secrets.SERVER_DIR }}
-            [ ! -f ".env" ] && cp .env.example .env
-            
-            echo "Installing dependencies..."
-            composer install --no-dev --optimize-autoloader --no-interaction
-            
-            echo "Optimizing application..."
-            php artisan optimize:clear
-            php artisan storage:link
-            
-            echo "Setting permissions..."
-            chmod -R 775 storage bootstrap/cache
-            chown -R www-data:www-data storage bootstrap/cache
-            
-            echo "Cleaning up..."
-            rm "/tmp/${{ env.PACKAGE }}" "/tmp/deploy-$TIMESTAMP.sha256"
-            echo "✅ Deployment completed successfully!"
-
-      - name: 📝 Manual Recovery Instructions
-        if: failure()
-        run: |
-          echo "::error::Automated deployment failed. Manual steps:"
-          echo ""
-          echo "1. DOWNLOAD PACKAGE:"
-          echo "   - Go to: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          echo "   - Under 'Artifacts', download 'deployment-package'"
-          echo ""
-          echo "2. UPLOAD TO SERVER:"
-          echo "   scp -P ${{ secrets.SSH_PORT || '22' }} deploy-*.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/"
-          echo ""
-          echo "3. VERIFY AND DEPLOY:"
-          echo "   ssh -p ${{ secrets.SSH_PORT || '22' }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}"
-          echo "   cd /tmp"
-          echo "   sha256sum -c deploy-*.sha256"
-          echo "   tar -xzf deploy-*.tar.gz -C ${{ secrets.SERVER_DIR }}"
-          echo "   cd ${{ secrets.SERVER_DIR }}"
-          echo "   [ ! -f '.env' ] && cp .env.example .env"
-          echo "   composer install --no-dev --optimize-autoloader"
-          echo "   php artisan optimize:clear"
-          echo "   php artisan storage:link"
-          echo "   chmod -R 775 storage bootstrap/cache"
-          echo "   rm /tmp/deploy-*"
-          echo ""
-          echo "Need help? Contact your DevOps team with this run ID: $GITHUB_RUN_ID"
+          ssh-keyscan -H ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} << 'EOF'
+          cd ${{ secrets.SERVER_DIR }}
+          echo "🔑 Verificando .env..."
+          if [ ! -f ".env" ]; then
+            echo "${{ secrets.ENV_FILE }}" > .env
+          fi
+          echo "📦 Instalando dependências..."
+          composer install --no-dev --optimize-autoloader
+          echo "🔄 Configurando ambiente..."
+          mkdir -p storage bootstrap/cache
+          php artisan storage:link
+          php artisan config:clear
+          php artisan cache:clear
+          php artisan route:clear
+          php artisan view:clear
+          echo "🛠️ Aplicando permissões..."
+          chmod -R 775 storage bootstrap/cache public/
+          chown -R www-data:www-data storage bootstrap/cache public/
+          echo "🗄️ Migrando banco de dados..."
+          php artisan migrate --force
+          echo "✅ Deploy efetuado com sucesso!"
+          EOF
