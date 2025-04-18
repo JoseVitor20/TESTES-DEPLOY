@@ -1,4 +1,4 @@
-name: Laravel Deployment (Stable Package Version)
+name: Laravel Deployment (With Artifact Fallback)
 
 on:
   push:
@@ -9,72 +9,67 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: 🛠️ Checkout code (with stable copy)
+      - name: 🛠️ Checkout code
         uses: actions/checkout@v3
         with:
-          path: 'source-code'  # Creates a clean copy in a subdirectory
+          path: 'source-code'
 
-      - name: 📦 Create Stable Deployment Package
+      - name: 📦 Create Deployment Package
         run: |
-          # Create clean copy without version control files
           mkdir -p deploy-build
           rsync -a --exclude='.git' --exclude='.github' --exclude='.env' source-code/ deploy-build/
           
-          # Create timestamped package
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           tar -czf "deploy-$TIMESTAMP.tar.gz" -C deploy-build .
           echo "PACKAGE=deploy-$TIMESTAMP.tar.gz" >> $GITHUB_ENV
-          echo "Package created: deploy-$TIMESTAMP.tar.gz"
 
-      - name: ⬆️ Upload Package (SSH)
-        uses: appleboy/scp-action@v0.1.7
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          source: "${{ env.PACKAGE }}"
-          target: "/tmp/"
-          timeout: 5m
+          name: deployment-package
+          path: ${{ env.PACKAGE }}
+          retention-days: 1
 
-      - name: 🚀 Deploy on Server
-        uses: appleboy/ssh-action@v1.2.0
+      - name: ⬆️ Attempt Automated Deployment
+        uses: nick-fields/retry@v2
         with:
-          host: ${{ secrets.SSH_SERVER }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          script: |
-            echo "Extracting package..."
-            tar -xzf "/tmp/${{ env.PACKAGE }}" -C ${{ secrets.SERVER_DIR }}
+          max_attempts: 3
+          timeout_minutes: 15
+          command: |
+            scp -P ${{ secrets.SSH_PORT || '22' }} \
+                -o StrictHostKeyChecking=no \
+                ${{ env.PACKAGE }} \
+                ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/
             
-            echo "Setting up environment..."
-            cd ${{ secrets.SERVER_DIR }}
-            [ ! -f ".env" ] && cp .env.example .env
-            
-            echo "Installing dependencies..."
-            composer install --no-dev --optimize-autoloader
-            
-            echo "Optimizing application..."
-            php artisan optimize:clear
-            php artisan storage:link
-            
-            echo "Setting permissions..."
-            chmod -R 775 storage bootstrap/cache
-            chown -R www-data:www-data storage bootstrap/cache
-            
-            echo "Cleaning up..."
-            rm "/tmp/${{ env.PACKAGE }}"
-            echo "🚀 Deployment completed successfully!"
+            ssh -p ${{ secrets.SSH_PORT || '22' }} \
+                ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} \
+                "tar -xzf /tmp/${{ env.PACKAGE }} -C ${{ secrets.SERVER_DIR }} && \
+                 cd ${{ secrets.SERVER_DIR }} && \
+                 [ ! -f '.env' ] && cp .env.example .env; \
+                 composer install --no-dev --optimize-autoloader; \
+                 php artisan optimize:clear; \
+                 php artisan storage:link; \
+                 chmod -R 775 storage bootstrap/cache; \
+                 rm /tmp/${{ env.PACKAGE }}"
 
-      - name: 🆘 Fallback Instructions
+      - name: 📝 Final Manual Instructions
         if: failure()
         run: |
-          echo "::error::Deployment failed. Manual steps:"
-          echo "1. Download package from Artifacts: ${{ env.PACKAGE }}"
-          echo "2. Upload to server: scp ${{ env.PACKAGE }} user@server:/tmp/"
-          echo "3. Run on server:"
-          echo "   tar -xzf /tmp/${{ env.PACKAGE }} -C ${{ secrets.SERVER_DIR }}"
+          echo "::error::Automated deployment failed. Complete manual steps:"
+          echo "1. Download the package:"
+          echo "   - Go to https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo "   - Download the 'deployment-package' artifact"
+          echo ""
+          echo "2. Upload to server:"
+          echo "   scp -P ${{ secrets.SSH_PORT || '22' }} deploy-*.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:/tmp/"
+          echo ""
+          echo "3. Execute on server:"
+          echo "   tar -xzf /tmp/deploy-*.tar.gz -C ${{ secrets.SERVER_DIR }}"
           echo "   cd ${{ secrets.SERVER_DIR }}"
+          echo "   [ ! -f '.env' ] && cp .env.example .env"
           echo "   composer install --no-dev --optimize-autoloader"
           echo "   php artisan optimize:clear"
+          echo "   php artisan storage:link"
+          echo "   chmod -R 775 storage bootstrap/cache"
+          echo "   chown -R www-data:www-data storage bootstrap/cache"
+          echo "   rm /tmp/deploy-*.tar.gz"
