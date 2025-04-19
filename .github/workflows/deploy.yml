@@ -32,3 +32,21 @@ jobs:
             chown -R www-data:www-data .
             chmod -R 775 storage bootstrap/cache
           ENDSSH
+
+- name: Deploy via SSH
+  run: |
+    ssh -o StrictHostKeyChecking=no user@your-server-ip 'bash -s' <<'ENDSSH'
+      echo "🧭 Diretório atual:"
+      pwd
+
+      echo "📁 Listando arquivos:"
+      ls -la
+
+      echo "🔁 Tentando git pull:"
+      git pull origin main || echo "⚠️ Falha no git pull"
+
+      echo "🚀 Rodando composer:"
+      composer install --no-interaction || echo "⚠️ Composer falhou"
+
+      echo "✅ Fim do deploy"
+    ENDSSH
