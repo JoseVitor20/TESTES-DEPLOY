@@ -29,7 +29,6 @@ jobs:
             # Continuação do deploy...
           ENDSSH
       
-
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
