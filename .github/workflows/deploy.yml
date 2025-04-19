@@ -16,7 +16,7 @@ jobs:
 
       - name: Debug SSH
         run: |
-          ssh -o StrictHostKeyChecking=no user@your-server-ip 'bash -s' <<'ENDSSH'
+          ssh -o StrictHostKeyChecking=no ${{secrets.SSH_USER}}@${{secrets.SSH_DIRECT_IP}} 'bash -s' <<'ENDSSH'
             echo "📍 Diretório atual:"
             pwd
             echo "📂 Arquivos encontrados:"
