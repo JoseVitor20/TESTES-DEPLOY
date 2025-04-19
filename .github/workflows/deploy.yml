@@ -1,14 +1,50 @@
-- name: Debug SSH
-  run: |
-    ssh -o StrictHostKeyChecking=no user@your-server-ip 'bash -s' <<'ENDSSH'
-      echo "📍 Diretório atual:"
-      pwd
-      echo "📂 Arquivos encontrados:"
-      ls -la
-      echo "📡 Hostname do servidor:"
-      hostname
-      echo "💡 Teste de git:"
-      git status || echo "⚠️ Não é um repositório git"
+name: Deploy Laravel via SSH
 
-      # Continuação do deploy...
-    ENDSSH
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy no servidor de produção teste
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Debug SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no user@your-server-ip 'bash -s' <<'ENDSSH'
+            echo "📍 Diretório atual:"
+            pwd
+            echo "📂 Arquivos encontrados:"
+            ls -la
+            echo "📡 Hostname do servidor:"
+            hostname
+            echo "💡 Teste de git:"
+            git status || echo "⚠️ Não é um repositório git"
+      
+            # Continuação do deploy...
+          ENDSSH
+      
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy via SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{secrets.SSH_USER}}@${{secrets.SSH_DIRECT_IP}} 'bash -s' <<'ENDSSH'
+            cd public_html/
+            git pull origin main
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            chown -R www-data:www-data .
+            chmod -R 775 storage bootstrap/cache
+          ENDSSH
