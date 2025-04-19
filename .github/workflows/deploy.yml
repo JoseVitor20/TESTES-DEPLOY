@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy no servidor de produção teste
+    name: Deploy no servidor de produção
     runs-on: ubuntu-latest
 
     steps:
