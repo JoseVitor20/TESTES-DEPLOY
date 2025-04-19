@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy no servidor de produção
+    name: Deploy no servidor de produção teste
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +22,7 @@ jobs:
       - name: Deploy via SSH
         run: |
           ssh -o StrictHostKeyChecking=no ${{secrets.SSH_USER}}@${{secrets.SSH_DIRECT_IP}} 'bash -s' <<'ENDSSH'
-            cd ~/public_html/starttofinish.com.br
+            cd ${{secrets.SERVER_DIR}}
             git pull origin main
             composer install --no-interaction --prefer-dist --optimize-autoloader
             php artisan migrate --force
@@ -32,21 +32,3 @@ jobs:
             chown -R www-data:www-data .
             chmod -R 775 storage bootstrap/cache
           ENDSSH
-
-- name: Deploy via SSH
-  run: |
-    ssh -o StrictHostKeyChecking=no user@your-server-ip 'bash -s' <<'ENDSSH'
-      echo "🧭 Diretório atual:"
-      pwd
-
-      echo "📁 Listando arquivos:"
-      ls -la
-
-      echo "🔁 Tentando git pull:"
-      git pull origin main || echo "⚠️ Falha no git pull"
-
-      echo "🚀 Rodando composer:"
-      composer install --no-interaction || echo "⚠️ Composer falhou"
-
-      echo "✅ Fim do deploy"
-    ENDSSH
