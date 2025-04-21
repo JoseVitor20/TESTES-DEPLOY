@@ -42,7 +42,6 @@ jobs:
           server: "ftp.nexocode.com.br"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
-          server-dir: "public_html/starttofinish.com.br/"
           local-dir: ./
           exclude: ""
 
@@ -51,8 +50,8 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} << 'EOF'
+          ssh-keyscan -H ftp.nexocode.com.br >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_rsa Josevitor@starttofinish.com.br@ftp.nexocode.com.br << 'EOF'
           cd public_html/starttofinish.com.br
           echo "🔑 Verificando .env..."
           if [ ! -f ".env" ]; then
