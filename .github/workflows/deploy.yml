@@ -40,7 +40,7 @@ jobs:
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
           server: "ftp.nexocode.com.br"
-          username: "josev797"
+          username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
           server-dir: "public_html/"
           local-dir: ./
