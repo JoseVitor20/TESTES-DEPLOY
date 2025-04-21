@@ -39,10 +39,10 @@ jobs:
       - name: 📂 Enviar arquivos via FTP
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
-          server: "ftp.starttofinish.com.br"
+          server: "ftp.nexocode.com.br"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
-          server-dir: "/public_html/"
+          server-dir: "/public_html"
           local-dir: ./
           exclude: ""
 
@@ -53,7 +53,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} << 'EOF'
-          cd /public_html/
+          cd /public_html
           echo "🔑 Verificando .env..."
           if [ ! -f ".env" ]; then
             echo "${{ secrets.ENV_FILE }}" > .env
