@@ -1,52 +1,53 @@
-name: Verificar Secrets
+name: Deploy Laravel via SSH
 
 on:
   push:
     branches:
       - main
-  schedule:
-    - cron: '0 2 * * *' # Executa todos os dias às 2h da manhã (UTC)
-  workflow_dispatch:
 
 jobs:
-  check-secrets:
+  deploy:
+    name: Deploy to Production Server
     runs-on: ubuntu-latest
+
     steps:
-      - name: Verificando secrets obrigatórias
+      - name: ✅ Verificar secrets obrigatórias
         run: |
           MISSING=0
 
           if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
             echo "::error::❌ SSH_PRIVATE_KEY está vazia ou não foi definida."
             MISSING=1
-          else
-            echo "✅ SSH_PRIVATE_KEY está presente."
           fi
 
           if [ -z "${{ secrets.SSH_USER }}" ]; then
             echo "::error::❌ SSH_USER está vazia ou não foi definida."
             MISSING=1
-          else
-            echo "✅ SSH_USER está presente."
           fi
 
-          if [ -z "${{ secrets.SSH_HOST }}" ]; then
-            echo "::error::❌ SSH_HOST está vazia ou não foi definida."
+          if [ -z "${{ secrets.SSH_DIRECT_IP }}" ]; then
+            echo "::error::❌ SSH_DIRECT_IP está vazia ou não foi definida."
             MISSING=1
-          else
-            echo "✅ SSH_HOST está presente."
           fi
 
-          if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
-            echo "::error::❌ DEPLOY_PATH está vazia ou não foi definida."
+          if [ -z "${{ secrets.SERVER_DIR }}" ]; then
+            echo "::error::❌ SERVER_DIR está vazia ou não foi definida."
             MISSING=1
-          else
-            echo "✅ DEPLOY_PATH está presente."
           fi
 
           if [ "$MISSING" -ne 0 ]; then
-            echo "::error::❌ Existem secrets ausentes. Corrija antes de continuar."
+            echo "::error::❌ Existem secrets ausentes. Corrija antes de continuar o deploy."
             exit 1
           fi
 
-          echo "🎉 Todas as secrets estão presentes!"
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy via SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{secrets.SSH_USER}}@${{secrets.SSH_DIRECT_IP}} 'bash -s' <<'END_
