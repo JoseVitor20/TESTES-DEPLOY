@@ -19,6 +19,14 @@ jobs:
         extensions: mbstring, ctype, fileinfo, openssl, pdo, mysql, tokenizer, xml, gd
         tools: composer:v2
 
+    - name: Cache node modules
+      uses: actions/cache@v3
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
     - name: Install dependencies
       run: |
         composer install --no-dev --prefer-dist --optimize-autoloader
@@ -27,29 +35,27 @@ jobs:
     - name: Install npm dependencies and build assets
       if: always()
       run: |
-        npm ci
+        npm install
         npm run build
 
     - name: Upload files via SSH
       uses: appleboy/scp-action@v0.1.4
       with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USERNAME }}
+        host: ${{ secrets.SSH_DIRECT_IP }}
+        username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.SSH_PORT }}
         source: "."
-        target: "/caminho/para/o/diretorio/no/servidor"
+        target: "/home1/josev797/public_html/starttofinish.com.br"
         rm: true
 
     - name: Run commands via SSH
       uses: appleboy/ssh-action@v0.1.8
       with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USERNAME }}
+        host: ${{ secrets.SSH_DIRECT_IP }}
+        username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.SSH_PORT }}
         script: |
-          cd /caminho/para/o/diretorio/no/servidor
+          cd /home1/josev797/public_html/starttofinish.com.br
           php artisan migrate --force
           php artisan cache:clear
           php artisan view:clear
