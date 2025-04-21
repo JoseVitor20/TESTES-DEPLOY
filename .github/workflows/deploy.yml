@@ -14,19 +14,17 @@ jobs:
       - name: 📥 Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: 🧑‍💻 Configurar arquivos para envio via FTP
+      - name: 🚀 Deploy via FTP com lftp
         run: |
-          # Instalar o lftp (cliente FTP)
+          # Instalar lftp
           sudo apt-get install lftp -y
-          # Gerar uma lista de arquivos a serem enviados
-          echo "Arquivos prontos para deploy!"
-
-      - name: 🚀 Enviar arquivos via FTP
-        run: |
+          
+          # Comando lftp para FTP com ignore de certificado
           lftp -f "
           set ftp:list-options -a
+          set ssl:verify-certificate false  # Ignora o erro de certificado
           open ftp://josev797:29_Zezao_DevFull@108.179.253.44
-          lcd ./  # Diretório local
+          lcd ./  # Diretório local atual
           cd /home1/josev797/public_html/starttofinish.com.br/  # Diretório remoto
           mirror -R --exclude .git* --exclude .env --exclude vendor --exclude storage --exclude node_modules --exclude README.md --exclude tests ./
           bye
