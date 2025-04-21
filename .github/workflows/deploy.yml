@@ -42,7 +42,7 @@ jobs:
           server: "108.179.253.44"
           username: "josev797"
           password: "29_Zezao_DevFull"
-          server-dir: "/home1/josev797/public_html"
+          server-dir: "/public_html"
           local-dir: ./
           exclude: ""
 
