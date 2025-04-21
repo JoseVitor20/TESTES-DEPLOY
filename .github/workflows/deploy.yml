@@ -1,34 +1,36 @@
-name: Deploy Laravel via SSH
+name: Verificar Secrets
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch: # Executado manualmente
 
 jobs:
-  deploy:
-    name: Deploy no servidor de produção teste
+  check-secrets:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Deploy via SSH
+      - name: Verificando secrets
         run: |
-          ssh -o StrictHostKeyChecking=no josev797@nexocode.com.br 'bash -s' <<'ENDSSH'
-            cd /home1/josev797/public_html/starttofinish.com.br
-            git pull origin main
-            composer install --no-interaction --prefer-dist --optimize-autoloader
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            chown -R www-data:www-data .
-            chmod -R 775 storage bootstrap/cache
-          ENDSSH
+          REQUIRED_SECRETS=(
+            SSH_PRIVATE_KEY
+            SSH_USER
+            SSH_HOST
+            DEPLOY_PATH
+          )
+
+          MISSING=0
+
+          for SECRET_NAME in "${REQUIRED_SECRETS[@]}"; do
+            VALUE="${{ secrets[SECRET_NAME] }}"
+            if [ -z "$VALUE" ]; then
+              echo "::error::❌ Secret '$SECRET_NAME' está vazia ou não foi definida."
+              MISSING=1
+            else
+              echo "✅ Secret '$SECRET_NAME' está presente."
+            fi
+          done
+
+          if [ "$MISSING" -ne 0 ]; then
+            echo "::error::❌ Existem secrets ausentes. Corrija antes de continuar."
+            exit 1
+          fi
+
+          echo "🎉 Todas as secrets estão presentes!"
