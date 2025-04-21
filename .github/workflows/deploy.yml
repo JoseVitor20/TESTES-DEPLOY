@@ -1,4 +1,4 @@
-name: Deploy Laravel 11 via SSH
+name: 🚀 Deploy Laravel via FTP
 
 on:
   push:
@@ -6,36 +6,29 @@ on:
       - main
 
 jobs:
-  deploy:
+  ftp-deploy:
+    name: Enviar arquivos via FTP
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configura chave SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SSH_DIRECT_IP }} >> ~/.ssh/known_hosts
+      - name: 📥 Checkout do repositório
+        uses: actions/checkout@v4
 
-      - name: Conecta e atualiza via git pull
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }} << 'EOF'
-            cd /home1/usuario/public_html/starttofinish.com.br
-
-            echo "-> Restaurando código do repositório"
-            git reset --hard
-            git clean -fd
-            git pull origin main
-
-            echo "-> Instalando dependências PHP"
-            composer install --no-dev --optimize-autoloader
-
-            echo "-> Rodando comandos do Laravel"
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-
-            echo "-> Corrigindo permissões"
-            chmod -R 775 storage bootstrap/cache
-          EOF
+      - name: 🚀 Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4
+        with:
+          server: "ftp.nexocode.com.br"
+          username: "Josevitor@starttofinish.com.br"
+          password: "29_Zezao_DevFull"
+          server-dir: /home1/usuario/public_html/starttofinish.com.br
+          exclude: |
+            **/.git*
+            **/.env
+            **/node_modules/**
+            **/vendor/**
+            **/storage/**
+            README.md
+            .editorconfig
+            .styleci.yml
+            .github/
+            tests/
