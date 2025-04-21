@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4  # Atualizado para v4
+      uses: actions/checkout@v4
 
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
@@ -19,24 +19,27 @@ jobs:
         extensions: mbstring, ctype, fileinfo, openssl, pdo, mysql, tokenizer, xml, gd
         tools: composer:v2
 
-    - name: Cache node modules
-      uses: actions/cache@v3
-      with:
-        path: node_modules
-        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node-
-
     - name: Install dependencies
       run: |
         composer install --no-dev --prefer-dist --optimize-autoloader
         composer dump-autoload
 
     - name: Install npm dependencies and build assets
-      if: always()
       run: |
         npm install
         npm run build
+
+    - name: Prepare deployment package
+      run: |
+        mkdir -p deployment
+        rsync -av --delete \
+          --exclude='.git' \
+          --exclude='.github' \
+          --exclude='node_modules' \
+          --exclude='storage/*' \
+          --exclude='tests' \
+          --exclude='.env' \
+          . deployment/
 
     - name: Upload files via SSH
       uses: appleboy/scp-action@v0.1.7
@@ -44,21 +47,21 @@ jobs:
         host: ${{ secrets.SSH_DIRECT_IP }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: "."
+        source: "deployment/"
         target: "/home1/josev797/public_html/starttofinish.com.br"
         rm: true
-        cipher: aes128-cbc
-        timeout: 2m
+        overwrite: true
+        strip_components: 1
 
     - name: Run commands via SSH
-      uses: appleboy/ssh-action@v0.1.8  # Versão estável testada
+      uses: appleboy/ssh-action@v0.1.8
       with:
         host: ${{ secrets.SSH_DIRECT_IP }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        cipher: aes128-cbc
         script: |
           cd /home1/josev797/public_html/starttofinish.com.br
+          php artisan storage:link
           php artisan migrate --force
           php artisan cache:clear
           php artisan view:clear
