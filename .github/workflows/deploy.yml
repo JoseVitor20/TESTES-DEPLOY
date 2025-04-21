@@ -42,7 +42,7 @@ jobs:
           server: "ftp.starttofinish.com.br"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
-          server-dir: "/public_html/starttofinish.com.br/"
+          server-dir: ${{ secrets.SERVER_DIR }}
           local-dir: ./
           exclude: ""
 
@@ -53,7 +53,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} << 'EOF'
-          cd /public_html/starttofinish.com.br/
+          cd ${{ secrets.SERVER_DIR }}
           echo "🔑 Verificando .env..."
           if [ ! -f ".env" ]; then
             echo "${{ secrets.ENV_FILE }}" > .env
