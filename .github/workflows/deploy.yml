@@ -42,7 +42,7 @@ jobs:
           server: "ftp.nexocode.com.br"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
-          server-dir: "public_html/"
+          server-dir: "public_html/starttofinish.com.br"
           local-dir: ./
           exclude: ""
 
