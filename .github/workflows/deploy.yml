@@ -50,8 +50,8 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ftp.nexocode.com.br >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_rsa Josevitor@starttofinish.com.br@ftp.nexocode.com.br << 'EOF'
+          ssh-keyscan -H 162.241.2.97 >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_rsa josev797@162.241.2.97 << 'EOF'
           cd public_html/starttofinish.com.br
           echo "🔑 Verificando .env..."
           if [ ! -f ".env" ]; then
