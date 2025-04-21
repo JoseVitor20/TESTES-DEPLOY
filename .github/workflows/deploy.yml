@@ -1,69 +1,38 @@
-name: Deploy Laravel App
+name: Deploy Laravel via SSH
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main  # Ou a branch que você faz deploy
 
 jobs:
   deploy:
+    name: Deploy Laravel App
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
 
-    - name: Setup PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '8.2'
-        extensions: mbstring, ctype, fileinfo, openssl, pdo, mysql, tokenizer, xml, gd
-        tools: composer:v2
+      - name: Configura chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_DIRECT_IP }} >> ~/.ssh/known_hosts
 
-    - name: Install dependencies
-      run: |
-        composer install --no-dev --prefer-dist --optimize-autoloader
-        composer dump-autoload
+      - name: Envia arquivos via rsync
+        run: |
+          rsync -az --delete --exclude=".env" --exclude="storage/" --exclude="vendor/" ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }}:/home1/josev797/public_html/starttofinish.com.br
 
-    - name: Install npm dependencies and build assets
-      run: |
-        npm install
-        npm run build
-
-    - name: Prepare deployment package
-      run: |
-        mkdir -p deployment
-        rsync -av --delete \
-          --exclude='.git' \
-          --exclude='.github' \
-          --exclude='node_modules' \
-          --exclude='storage/*' \
-          --exclude='tests' \
-          --exclude='.env' \
-          . deployment/
-
-    - name: Upload files via SSH
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.SSH_DIRECT_IP }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: "deployment/"
-        target: "/home1/josev797/public_html/starttofinish.com.br"
-        rm: true
-        overwrite: true
-        strip_components: 1
-
-    - name: Run commands via SSH
-      uses: appleboy/ssh-action@v0.1.8
-      with:
-        host: ${{ secrets.SSH_DIRECT_IP }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-          cd /home1/josev797/public_html/starttofinish.com.br
-          php artisan storage:link
-          php artisan migrate --force
-          php artisan cache:clear
-          php artisan view:clear
-          php artisan route:cache
-          php artisan config:cache
+      - name: Roda comandos pós-deploy via SSH
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }} << 'EOF'
+            cd /home1/josev797/public_html/starttofinish.com.br
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            chmod -R 775 storage bootstrap/cache
+          EOF
