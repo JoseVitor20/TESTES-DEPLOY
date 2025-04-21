@@ -39,7 +39,7 @@ jobs:
         npm run build
 
     - name: Upload files via SSH
-      uses: appleboy/scp-action@v0.1.4
+      uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.SSH_DIRECT_IP }}
         username: ${{ secrets.SSH_USER }}
@@ -47,13 +47,16 @@ jobs:
         source: "."
         target: "/home1/josev797/public_html/starttofinish.com.br"
         rm: true
+        cipher: aes128-cbc
+        timeout: 2m
 
     - name: Run commands via SSH
-      uses: appleboy/ssh-action@v0.1.8
+      uses: appleboy/ssh-action@v0.2.0
       with:
         host: ${{ secrets.SSH_DIRECT_IP }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        cipher: aes128-cbc
         script: |
           cd /home1/josev797/public_html/starttofinish.com.br
           php artisan migrate --force
