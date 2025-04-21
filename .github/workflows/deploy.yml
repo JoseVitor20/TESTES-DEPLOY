@@ -1,7 +1,13 @@
 name: Verificar Secrets
 
 on:
-  workflow_dispatch: # Executado manualmente
+  push:
+    branches:
+      - main
+      - develop
+  schedule:
+    - cron: '0 2 * * *' # Executa todo dia às 2h da manhã (UTC)
+  workflow_dispatch: # Ainda permite execução manual também
 
 jobs:
   check-secrets:
