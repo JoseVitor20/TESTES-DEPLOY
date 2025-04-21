@@ -16,30 +16,32 @@ jobs:
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.1'
-        extensions: mbstring, ctype, fileinfo, openssl, PDO, mysql, tokenizer, xml, gd
+        extensions: mbstring, ctype, fileinfo, openssl, pdo, mysql, tokenizer, xml, gd
         tools: composer:v2
 
     - name: Install dependencies
       run: composer install --no-dev --prefer-dist --optimize-autoloader
 
     - name: Install npm dependencies
+      if: always()
       run: |
         npm install
         npm run prod
 
     - name: Upload files via SSH
-      uses: appleboy/scp-action@master
+      uses: appleboy/scp-action@v0.1.4
       with:
-        host: ${{ secrets.SSH_SERVER }}
+        host: ${{ secrets.SERVER_DIR }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: ".", "vendor", "node_modules"
+        source: "."
         target: "/home1/josev797/public_html/starttofinish.com.br"
+        rm: true
 
     - name: Run commands via SSH
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v0.1.8
       with:
-        host: ${{ secrets.SSH_SERVER }}
+        host: ${{ secrets.SERVER_DIR }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
