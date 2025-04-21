@@ -42,7 +42,7 @@ jobs:
           server: "108.179.253.44"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
-          server-dir: "home1/josev797/public_html/starttofinish.com.br"
+          server-dir: "home1/josev797/public_html/"
           local-dir: ./
           exclude: ""
 
@@ -53,7 +53,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_SERVER }} >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} << 'EOF'
-          cd home1/josev797/public_html/starttofinish.com.br
+          cd home1/josev797/public_html/
           echo "🔑 Verificando .env..."
           if [ ! -f ".env" ]; then
             echo "${{ secrets.ENV_FILE }}" > .env
