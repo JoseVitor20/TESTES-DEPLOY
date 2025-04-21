@@ -54,25 +54,26 @@ jobs:
           SSH_IP="${{ secrets.SSH_DIRECT_IP }}"
           SERVER_DIR="${{ secrets.SERVER_DIR }}"
 
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_IP "bash -s" <<ENDSSH
-            cd $SERVER_DIR
-            echo "📦 Atualizando código..."
-            git pull origin main
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_IP bash -s <<EOF
+          cd $SERVER_DIR
+          echo "📦 Atualizando código..."
+          git pull origin main
 
-            echo "📦 Instalando dependências PHP..."
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+          echo "📦 Instalando dependências PHP..."
+          composer install --no-interaction --prefer-dist --optimize-autoloader
 
-            echo "🧩 Executando migrations..."
-            php artisan migrate --force
+          echo "🧩 Executando migrations..."
+          php artisan migrate --force
 
-            echo "⚙️ Cacheando configurações..."
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
+          echo "⚙️ Cacheando configurações..."
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
 
-            echo "🔐 Ajustando permissões..."
-            chown -R www-data:www-data .
-            chmod -R 775 storage bootstrap/cache
+          echo "🔐 Ajustando permissões..."
+          chown -R www-data:www-data .
+          chmod -R 775 storage bootstrap/cache
 
-            echo "✅ Deploy finalizado com sucesso!"
-ENDSSH
+          echo "✅ Deploy finalizado com sucesso!"
+EOF
+
