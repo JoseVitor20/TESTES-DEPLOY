@@ -1,4 +1,4 @@
-name: 🚀 Deploy Laravel via FTP
+name: 🚀 Deploy Laravel via FTP com curl
 
 on:
   push:
@@ -7,28 +7,27 @@ on:
 
 jobs:
   ftp-deploy:
-    name: Enviar arquivos via FTP
+    name: Enviar arquivos via FTP com curl
     runs-on: ubuntu-latest
 
     steps:
       - name: 📥 Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: 🚀 Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v2.1.0
-        with:
-          server: "ftp.nexocode.com.br"
-          username: "Josevitor@starttofinish.com.br"
-          password: "29_Zezao_DevFull"
-          server-dir: "/home1/josev797/public_html/starttofinish.com.br/"
-          exclude: |
-            **/.git*
-            **/.env
-            **/node_modules/**
-            **/vendor/**
-            **/storage/**
-            README.md
-            .editorconfig
-            .styleci.yml
-            .github/
-            tests/
+      - name: 🧑‍💻 Configurar arquivos para envio via FTP
+        run: |
+          # Instalar o lftp (cliente FTP)
+          sudo apt-get install lftp -y
+          # Gerar uma lista de arquivos a serem enviados
+          echo "Arquivos prontos para deploy!"
+
+      - name: 🚀 Enviar arquivos via FTP
+        run: |
+          lftp -f "
+          set ftp:list-options -a
+          open ftp://ftp.nexocode.com.br:29_Zezao_DevFull@ftp.nexocode.com.br
+          lcd ./  # Diretório local
+          cd /home1/josev797/public_html/starttofinish.com.br/  # Diretório remoto
+          mirror -R --exclude .git* --exclude .env --exclude vendor --exclude storage --exclude node_modules --exclude README.md --exclude tests ./
+          bye
+          "
