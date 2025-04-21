@@ -39,7 +39,7 @@ jobs:
       - name: 📂 Enviar arquivos via FTP
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
-          server: "ftp.nexocode.com.br"
+          server: "108.179.253.44"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
           local-dir: ./
