@@ -40,9 +40,9 @@ jobs:
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
           server: "108.179.253.44"
-          username: "Josevitor@starttofinish.com.br"
+          username: "josev797"
           password: "29_Zezao_DevFull"
-          server-dir: "/home1/josev797/public_html/"
+          server-dir: "/home1/josev797/public_html"
           local-dir: ./
           exclude: ""
 
