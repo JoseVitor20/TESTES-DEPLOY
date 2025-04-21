@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # Atualizado para v4
 
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
@@ -51,7 +51,7 @@ jobs:
         timeout: 2m
 
     - name: Run commands via SSH
-      uses: appleboy/ssh-action@v0.2.0
+      uses: appleboy/ssh-action@v0.1.8  # Versão estável testada
       with:
         host: ${{ secrets.SSH_DIRECT_IP }}
         username: ${{ secrets.SSH_USER }}
