@@ -15,12 +15,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🚀 Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v3
+        uses: SamKirkland/FTP-Deploy-Action@v2
         with:
           server: "ftp.nexocode.com.br"
           username: "Josevitor@starttofinish.com.br"
           password: "29_Zezao_DevFull"
-          server-dir: "/home1/josev797/public_html/starttofinish.com.br"
+          server-dir: "/home1/josev797/public_html/starttofinish.com.br/"
           exclude: |
             **/.git*
             **/.env
