@@ -1,4 +1,4 @@
-name: 🚀 Deploy Laravel via FTP com curl
+name: Deploy Laravel via SSH
 
 on:
   push:
@@ -6,26 +6,29 @@ on:
       - main
 
 jobs:
-  ftp-deploy:
-    name: Enviar arquivos via FTP com curl
+  deploy:
+    name: Deploy to Production Server
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout do repositório
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: 🚀 Deploy via FTP com lftp
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy via SSH
         run: |
-          # Instalar lftp
-          sudo apt-get install lftp -y
-          
-          # Comando lftp para FTP com ignore de certificado
-          lftp -f "
-          set ftp:list-options -a
-          set ssl:verify-certificate false  # Ignora o erro de certificado
-          open ftp://josev797:29_Zezao_DevFull@ftp.nexocode.com.br
-          lcd ./  # Diretório local atual
-          cd /home1/josev797/public_html/starttofinish.com.br/  # Diretório remoto
-          mirror -R --exclude .git* --exclude .env --exclude vendor --exclude storage --exclude node_modules --exclude README.md --exclude tests ./
-          bye
-          "
+          ssh -o StrictHostKeyChecking=no ${{secrets.SSH_USER}}@${{secrets.SSH_DIRECT_IP}} 'bash -s' <<'ENDSSH'
+            cd ${{secrets.SERVER_DIR}}
+            git pull origin main
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            chown -R www-data:www-data .
+            chmod -R 775 storage bootstrap/cache
+          ENDSSH
