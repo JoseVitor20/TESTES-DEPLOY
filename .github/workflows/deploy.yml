@@ -4,35 +4,45 @@ on:
   push:
     branches:
       - main
-      - develop
   schedule:
-    - cron: '0 2 * * *' # Executa todo dia às 2h da manhã (UTC)
-  workflow_dispatch: # Ainda permite execução manual também
+    - cron: '0 2 * * *' # Executa todos os dias às 2h da manhã (UTC)
+  workflow_dispatch:
 
 jobs:
   check-secrets:
     runs-on: ubuntu-latest
     steps:
-      - name: Verificando secrets
+      - name: Verificando secrets obrigatórias
         run: |
-          REQUIRED_SECRETS=(
-            SSH_PRIVATE_KEY
-            SSH_USER
-            SSH_HOST
-            DEPLOY_PATH
-          )
-
           MISSING=0
 
-          for SECRET_NAME in "${REQUIRED_SECRETS[@]}"; do
-            VALUE="${{ secrets[SECRET_NAME] }}"
-            if [ -z "$VALUE" ]; then
-              echo "::error::❌ Secret '$SECRET_NAME' está vazia ou não foi definida."
-              MISSING=1
-            else
-              echo "✅ Secret '$SECRET_NAME' está presente."
-            fi
-          done
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "::error::❌ SSH_PRIVATE_KEY está vazia ou não foi definida."
+            MISSING=1
+          else
+            echo "✅ SSH_PRIVATE_KEY está presente."
+          fi
+
+          if [ -z "${{ secrets.SSH_USER }}" ]; then
+            echo "::error::❌ SSH_USER está vazia ou não foi definida."
+            MISSING=1
+          else
+            echo "✅ SSH_USER está presente."
+          fi
+
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then
+            echo "::error::❌ SSH_HOST está vazia ou não foi definida."
+            MISSING=1
+          else
+            echo "✅ SSH_HOST está presente."
+          fi
+
+          if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "::error::❌ DEPLOY_PATH está vazia ou não foi definida."
+            MISSING=1
+          else
+            echo "✅ DEPLOY_PATH está presente."
+          fi
 
           if [ "$MISSING" -ne 0 ]; then
             echo "::error::❌ Existem secrets ausentes. Corrija antes de continuar."
