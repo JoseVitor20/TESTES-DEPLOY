@@ -25,7 +25,7 @@ jobs:
         run: |
           lftp -f "
           set ftp:list-options -a
-          open ftp://ftp.nexocode.com.br:29_Zezao_DevFull@ftp.nexocode.com.br
+          open ftp://josev797:29_Zezao_DevFull@108.179.253.44
           lcd ./  # Diretório local
           cd /home1/josev797/public_html/starttofinish.com.br/  # Diretório remoto
           mirror -R --exclude .git* --exclude .env --exclude vendor --exclude storage --exclude node_modules --exclude README.md --exclude tests ./
