@@ -1,19 +1,15 @@
-name: Deploy Laravel via SSH
+name: Deploy Laravel 11 via SSH (pré-instalado)
 
 on:
   push:
     branches:
-      - main  # Ou a branch que você faz deploy
+      - main
 
 jobs:
   deploy:
-    name: Deploy Laravel App
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
-
       - name: Configura chave SSH
         run: |
           mkdir -p ~/.ssh
@@ -21,18 +17,25 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SSH_DIRECT_IP }} >> ~/.ssh/known_hosts
 
-      - name: Envia arquivos via rsync
-        run: |
-          rsync -az --delete --exclude=".env" --exclude="storage/" --exclude="vendor/" ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }}:/home1/josev797/public_html/starttofinish.com.br
-
-      - name: Roda comandos pós-deploy via SSH
+      - name: Conecta e atualiza via git pull
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_DIRECT_IP }} << 'EOF'
-            cd /home1/josev797/public_html/starttofinish.com.br
+            cd /home1/usuario/public_html/starttofinish.com.br
+
+            echo "-> Restaurando código do repositório"
+            git reset --hard
+            git clean -fd
+            git pull origin main
+
+            echo "-> Instalando dependências PHP"
             composer install --no-dev --optimize-autoloader
+
+            echo "-> Rodando comandos do Laravel"
             php artisan migrate --force
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
+
+            echo "-> Corrigindo permissões"
             chmod -R 775 storage bootstrap/cache
           EOF
