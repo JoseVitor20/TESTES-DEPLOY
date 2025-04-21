@@ -1,4 +1,4 @@
-name: Deploy Laravel 11 via SSH (pré-instalado)
+name: Deploy Laravel 11 via SSH
 
 on:
   push:
