@@ -15,35 +15,39 @@ jobs:
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
-        php-version: '8.1'
+        php-version: '8.2'
         extensions: mbstring, ctype, fileinfo, openssl, pdo, mysql, tokenizer, xml, gd
         tools: composer:v2
 
     - name: Install dependencies
-      run: composer install --no-dev --prefer-dist --optimize-autoloader
+      run: |
+        composer install --no-dev --prefer-dist --optimize-autoloader
+        composer dump-autoload
 
-    - name: Install npm dependencies
+    - name: Install npm dependencies and build assets
       if: always()
       run: |
-        npm install
-        npm run prod
+        npm ci
+        npm run build
 
     - name: Upload files via SSH
       uses: appleboy/scp-action@v0.1.4
       with:
-        host: ${{ secrets.SERVER_DIR }}
-        username: ${{ secrets.SSH_USER }}
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT }}
         source: "."
-        target: "/home1/josev797/public_html/starttofinish.com.br"
+        target: "/caminho/para/o/diretorio/no/servidor"
         rm: true
 
     - name: Run commands via SSH
       uses: appleboy/ssh-action@v0.1.8
       with:
-        host: ${{ secrets.SERVER_DIR }}
-        username: ${{ secrets.SSH_USER }}
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT }}
         script: |
           cd /caminho/para/o/diretorio/no/servidor
           php artisan migrate --force
