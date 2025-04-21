@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout code
+      - name: Checkout código
         uses: actions/checkout@v3
 
       - name: Setup SSH
@@ -48,6 +48,31 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Deploy via SSH
+      - name: 🚀 Deploy via SSH
         run: |
-          ssh -o StrictHostKeyChecking=no ${{secrets.SSH_USER}}@${{secrets.SSH_DIRECT_IP}} 'bash -s' <<'END_
+          SSH_USER="${{ secrets.SSH_USER }}"
+          SSH_IP="${{ secrets.SSH_DIRECT_IP }}"
+          SERVER_DIR="${{ secrets.SERVER_DIR }}"
+
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_IP "bash -s" <<ENDSSH
+            cd $SERVER_DIR
+            echo "📦 Atualizando código..."
+            git pull origin main
+
+            echo "📦 Instalando dependências PHP..."
+            composer install --no-interaction --prefer-dist --optimize-autoloader
+
+            echo "🧩 Executando migrations..."
+            php artisan migrate --force
+
+            echo "⚙️ Cacheando configurações..."
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            echo "🔐 Ajustando permissões..."
+            chown -R www-data:www-data .
+            chmod -R 775 storage bootstrap/cache
+
+            echo "✅ Deploy finalizado com sucesso!"
+ENDSSH
